@@ -11,8 +11,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platform-tools" "build-tools;35.0.0" "platforms;android-35"
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "build-tools;35.0.0" "platforms;android-35"'
       - uses: chickensoft-games/setup-godot@v2
         with:
           version: 4.6.3
