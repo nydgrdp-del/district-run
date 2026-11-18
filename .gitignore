@@ -1,0 +1,8 @@
+client/.godot/
+__pycache__/
+*.sqlite3*
+*.apk
+*.pck
+*.log
+artifacts/
+client/export_credentials.cfg
