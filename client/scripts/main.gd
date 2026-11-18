@@ -281,7 +281,7 @@ func _practice_hud() -> void:
 	touch.vehicle_caption="EXIT CAR" if you.vehicle!="" else ("ENTER CAR" if _near_car()!="" else "")
 	var action: Dictionary=world.jewelry.context(Vector3(you.x,0,you.z),world) if you.vehicle=="" else {}
 	touch.loot_caption=action.get("text","")
-	touch.bag_caption="JEWELRY 0.6  |  BAG %d/4    $%d" % [world.jewelry.bag.size(),world.jewelry.cash]
+	touch.bag_caption="JEWELRY 0.7  |  BAG %d/4    $%d" % [world.jewelry.bag.size(),world.jewelry.cash]
 	if you.vehicle!="":
 		touch.bag_caption+="    TRUNK %d/12" % world.jewelry.trunks.get(you.vehicle,[]).size()
 	touch.queue_redraw()
@@ -304,13 +304,22 @@ func _practice_move(dir: Vector2, sprint: bool, delta: float) -> void:
 		drive_speed=move_toward(drive_speed,-dir.y*14.0,10.0*delta)
 		var heading:=car.rotation.y-dir.x*drive_speed*.12*delta
 		var dest:=pos+Vector2(-sin(heading),-cos(heading))*drive_speed*delta
-		if _solo_blocked(dest,2.55,str(you.vehicle)):
+		var fraction:=1.0
+		if _car_blocked(dest,heading,you.vehicle):
+			var clear:=0.0
+			var blocked:=1.0
+			for i in 10:
+				var mid:=(clear+blocked)*.5
+				if _car_blocked(pos.lerp(dest,mid),lerp_angle(car.rotation.y,heading,mid),you.vehicle):
+					blocked=mid
+				else:
+					clear=mid
+			fraction=clear
 			drive_speed=0
-		else:
-			car.rotation.y=heading
-			car.position=Vector3(dest.x,0,dest.y)
-			pos=dest
-			yaw=heading
+		pos=pos.lerp(dest,fraction)
+		car.rotation.y=lerp_angle(car.rotation.y,heading,fraction)
+		car.position=Vector3(pos.x,0,pos.y)
+		yaw=car.rotation.y
 	else:
 		for axis in [Vector2(step.x,0),Vector2(0,step.y)]:
 			if not _solo_blocked(pos+axis,.40):
@@ -320,6 +329,47 @@ func _practice_move(dir: Vector2, sprint: bool, delta: float) -> void:
 	you.z=pos.y
 	you.yaw=yaw
 	actor.state(you)
+
+# Top-down silhouette in model coordinates, including the mirrors and bumpers.
+static var car_outline := PackedVector2Array([
+	Vector2(-.90,-2.26),Vector2(.90,-2.26),Vector2(1.08,-1.83),
+	Vector2(1.08,-.71),Vector2(1.205,-.71),Vector2(1.205,-.39),Vector2(1.08,-.39),
+	Vector2(1.08,1.78),Vector2(.88,2.16),Vector2(-.88,2.16),Vector2(-1.08,1.78),
+	Vector2(-1.08,-.39),Vector2(-1.205,-.39),Vector2(-1.205,-.71),Vector2(-1.08,-.71),Vector2(-1.08,-1.83)])
+
+func _outline(pos: Vector2,heading: float) -> PackedVector2Array:
+	return Transform2D(-heading,pos)*car_outline
+
+func _overlaps_rect(car: PackedVector2Array, center: Vector2, half: Vector2) -> bool:
+	var diagonal:=Vector2(half.x,-half.y)
+	var corners:=PackedVector2Array([center-half,center+diagonal,center+half,center-diagonal])
+	return not Geometry2D.intersect_polygons(car,corners).is_empty()
+
+func _car_blocked(pos: Vector2,heading: float,id: String) -> bool:
+	var outline:=_outline(pos,heading)
+	for point in outline:
+		if maxf(absf(point.x),absf(point.y))>world.data.extent:
+			return true
+	var key:=Vector2i(roundi(pos.x/60),roundi(pos.y/60))
+	for dx in range(-1,2):
+		for dz in range(-1,2):
+			for building in world.buildings_by_chunk.get(key+Vector2i(dx,dz),[]):
+				var center:=Vector2(building.x,building.z)
+				if pos.distance_squared_to(center)>144:
+					continue
+				if _overlaps_rect(outline,center,Vector2(6.15,5.15)):
+					return true
+				if building.style=="apartment":
+					for x in [-4.2,4.2]:
+						if _overlaps_rect(outline,center+Vector2(x,6),Vector2(1.7,.75)):
+							return true
+	for other in world.vehicles:
+		if other!=id:
+			var car: Node3D=world.vehicles[other]
+			var center:=Vector2(car.position.x,car.position.z)
+			if pos.distance_squared_to(center)<36 and not Geometry2D.intersect_polygons(outline,_outline(center,car.rotation.y)).is_empty():
+				return true
+	return false
 
 func _solo_blocked(pos: Vector2,radius: float,ignore_car: String="") -> bool:
 	if maxf(absf(pos.x),absf(pos.y))>world.data.extent-radius:
