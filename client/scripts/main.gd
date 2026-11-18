@@ -14,6 +14,7 @@ var you := {}
 var latest := {}
 var yaw := 0.0
 var pitch := .23
+var drive_speed := 0.0
 var practice := false
 var carrying := false
 var deliveries := 0
@@ -215,6 +216,7 @@ func _make_ui() -> void:
 	objective.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	touch=TouchControls.new()
 	root.add_child(touch)
+	touch.vehicle_pressed.connect(_vehicle)
 	touch.look_changed.connect(func(delta: Vector2): yaw-=delta.x*.005; pitch=clampf(pitch+delta.y*.003,-.08,.9))
 	sprint_button=_button(hud,"SPRINT",Vector2(74,664),Vector2(173,40),func(): pass)
 	sprint_button.toggle_mode=true
@@ -268,6 +270,8 @@ func _start_practice() -> void:
 	_notice("Move with the left stick. Swipe right side to look.")
 
 func _practice_hud() -> void:
+	touch.vehicle_caption="EXIT CAR" if you.vehicle!="" else ("ENTER CAR" if _near_car()!="" else "")
+	touch.queue_redraw()
 	var station: Dictionary=world.data.stations[1 if carrying else 0]
 	var offset:=Vector2(station.x-you.x,station.z-you.z)
 	objective.text=("Deliver to " if carrying else "Collect parcel at ")+str(station.title)+"  %dm" % roundi(offset.length())
@@ -281,23 +285,77 @@ func _practice_hud() -> void:
 func _practice_move(dir: Vector2, sprint: bool, delta: float) -> void:
 	var actor: Node3D=actors.local
 	var step:=dir*(6.2 if sprint else 3.8)*delta
-	for axis in [Vector2(step.x,0),Vector2(0,step.y)]:
-		var pos: Vector2=Vector2(you.x,you.z)+axis
-		if maxf(absf(pos.x),absf(pos.y))>world.data.extent-0.4:
-			continue
-		var key:=Vector2i(roundi(pos.x/60),roundi(pos.y/60))
-		var blocked:=false
-		for dx in range(-1,2):
-			for dz in range(-1,2):
-				for wall in world.walls_by_chunk.get(key+Vector2i(dx,dz),[]):
-					if absf(pos.x-wall[0])<wall[2]*.5+.35 and absf(pos.y-wall[1])<wall[3]*.5+.35:
-						blocked=true
-		if not blocked:
-			you.x=pos.x
-			you.z=pos.y
-	you.speed=step.length()/delta
+	var pos:=Vector2(you.x,you.z)
+	if you.vehicle != "":
+		var car: Node3D=world.vehicles[you.vehicle]
+		drive_speed=move_toward(drive_speed,-dir.y*14.0,10.0*delta)
+		var heading:=car.rotation.y-dir.x*drive_speed*.12*delta
+		var dest:=pos+Vector2(-sin(heading),-cos(heading))*drive_speed*delta
+		if _solo_blocked(dest,2.55,str(you.vehicle)):
+			drive_speed=0
+		else:
+			car.rotation.y=heading
+			car.position=Vector3(dest.x,0,dest.y)
+			pos=dest
+			yaw=heading
+	else:
+		for axis in [Vector2(step.x,0),Vector2(0,step.y)]:
+			if not _solo_blocked(pos+axis,.40):
+				pos+=axis
+	you.speed=pos.distance_to(Vector2(you.x,you.z))/delta
+	you.x=pos.x
+	you.z=pos.y
 	you.yaw=yaw
 	actor.state(you)
+
+func _solo_blocked(pos: Vector2,radius: float,ignore_car: String="") -> bool:
+	if maxf(absf(pos.x),absf(pos.y))>world.data.extent-radius:
+		return true
+	var key:=Vector2i(roundi(pos.x/60),roundi(pos.y/60))
+	for dx in range(-1,2):
+		for dz in range(-1,2):
+			for building in world.buildings_by_chunk.get(key+Vector2i(dx,dz),[]):
+				if absf(pos.x-building.x)<6.18+radius and absf(pos.y-building.z)<5.18+radius:
+					return true
+	for id in world.vehicles:
+		if id==ignore_car:
+			continue
+		var car: Node3D=world.vehicles[id]
+		var local:=car.to_local(Vector3(pos.x,0,pos.y))
+		if absf(local.x)<1.2+radius and absf(local.z)<2.3+radius:
+			return true
+	return false
+
+func _near_car() -> String:
+	for id in world.vehicles:
+		var car: Node3D=world.vehicles[id]
+		if Vector2(you.x,you.z).distance_to(Vector2(car.position.x,car.position.z))<=3.8:
+			return str(id)
+	return ""
+
+func _solo_vehicle() -> void:
+	if you.vehicle=="":
+		var id:=_near_car()
+		if id.is_empty():
+			return
+		var car: Node3D=world.vehicles[id]
+		you.vehicle=id
+		you.x=car.position.x
+		you.z=car.position.z
+		yaw=car.rotation.y
+	else:
+		var car: Node3D=world.vehicles[you.vehicle]
+		for side in [Vector3(-2,0,0),Vector3(2,0,0),Vector3(0,0,3.2),Vector3(0,0,-3.2)]:
+			var dest:=car.to_global(side)
+			if not _solo_blocked(Vector2(dest.x,dest.z),.4):
+				you.x=dest.x
+				you.z=dest.z
+				you.vehicle=""
+				actors.local.position=dest
+				break
+	drive_speed=0
+	actors.local.state(you)
+	_practice_hud()
 
 func _connected() -> void:
 	playing=true
@@ -312,6 +370,7 @@ func _connected() -> void:
 func _disconnected() -> void:
 	playing=false
 	practice=false
+	touch.vehicle_caption=""
 	hud.hide()
 	menu.show()
 	inventory.hide()
@@ -443,6 +502,9 @@ func _interact() -> void:
 		net.act(nearest.kind,nearest.id)
 
 func _vehicle() -> void:
+	if practice:
+		_solo_vehicle()
+		return
 	if you.is_empty():
 		return
 	if not str(you.vehicle).is_empty():
@@ -463,6 +525,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		yaw-=event.relative.x*.004
 		pitch=clampf(pitch+event.relative.y*.003,-.08,.9)
 	if practice:
+		if event.is_action_pressed("vehicle"):
+			_vehicle()
 		if event.is_action_pressed("interact"):
 			_interact()
 		return

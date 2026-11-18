@@ -1,6 +1,9 @@
 extends Control
 
 signal look_changed(delta: Vector2)
+signal vehicle_pressed
+var vehicle_caption := ""
+const CAR_RECT := Rect2(995,480,235,70)
 var move := Vector2.ZERO
 var stick_id := -1
 var look_id := -1
@@ -19,6 +22,10 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var pos: Vector2 = event.position / scale_factor
 		if event.pressed and not event.canceled:
+			if not vehicle_caption.is_empty() and CAR_RECT.has_point(pos):
+				vehicle_pressed.emit()
+				get_viewport().set_input_as_handled()
+				return
 			if pos.x < 360 and pos.y > 380 and pos.y < 655 and stick_id < 0:
 				stick_id = event.index
 				origin = pos
@@ -44,6 +51,10 @@ func _input(event: InputEvent) -> void:
 func _draw() -> void:
 	if not enabled:
 		return
+	if not vehicle_caption.is_empty():
+		draw_rect(CAR_RECT,Color(.04,.16,.18,.94))
+		draw_rect(CAR_RECT,Color(.55,.92,.82),false,3)
+		draw_string(ThemeDB.fallback_font,CAR_RECT.position+Vector2(0,44),vehicle_caption,HORIZONTAL_ALIGNMENT_CENTER,CAR_RECT.size.x,24,Color.WHITE)
 	var center := origin if stick_id >= 0 else Vector2(160,570)
 	draw_circle(center,72,Color(0.04,.12,.16,.32))
 	draw_arc(center,72,0,TAU,64,Color(.7,.88,.85,.5),2,true)
