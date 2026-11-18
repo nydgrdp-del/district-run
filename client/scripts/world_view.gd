@@ -11,6 +11,8 @@ var pickups := {}
 var stations := {}
 var last_chunk := Vector2i(9999,9999)
 var home: Node3D
+var facade_material := StandardMaterial3D.new()
+var police_material := StandardMaterial3D.new()
 var road_material := StandardMaterial3D.new()
 var sand_material := StandardMaterial3D.new()
 var pavement_material := StandardMaterial3D.new()
@@ -31,9 +33,11 @@ func _ready() -> void:
 		walls_by_chunk[key].append(wall)
 	for key in ["shop","house","apartment","police","sedan","runner","palm","crate","terminal"]:
 		models[key] = load("res://assets/%s.glb" % key)
-	road_material.albedo_color = Color("343e40")
-	sand_material.albedo_color = Color("bbae83")
-	pavement_material.albedo_color = Color("a9a798")
+	_surface(road_material,"asphalt_04",Color("b9b8b6"),.32)
+	_surface(facade_material,"beige_wall_001",Color("e8dbc9"),.45)
+	_surface(police_material,"beige_wall_001",Color("70a69e"),.45)
+	sand_material.albedo_color = Color("ac966c")
+	pavement_material.albedo_color = Color("999589")
 	line_material.albedo_color = Color("d8cb89")
 	for mat in [road_material,sand_material,pavement_material,line_material]:
 		mat.roughness = .95
@@ -56,6 +60,14 @@ func _ready() -> void:
 		pickups[loot.id] = crate
 		label_at(crate, "LOOT", Vector3(0,1.5,0), Color("f6c25d"))
 	update_chunks(Vector3.ZERO)
+
+func _surface(material: StandardMaterial3D,asset: String,tint: Color,tiles_per_meter: float) -> void:
+	material.albedo_texture=load("res://assets/surfaces/%s.jpg" % asset)
+	material.albedo_color=tint
+	material.uv1_triplanar=true
+	material.uv1_scale=Vector3.ONE*tiles_per_meter
+	material.texture_filter=BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	material.roughness=.92
 
 func mesh_box(parent: Node3D, at: Vector3, size: Vector3, mat: Material) -> MeshInstance3D:
 	var obj := MeshInstance3D.new()
@@ -122,6 +134,10 @@ func build_chunk(key: Vector2i) -> void:
 		var building: Node3D = models[b.style].instantiate()
 		building.position = Vector3(b.x,0,b.z)
 		root.add_child(building)
+		var wall_name: String={"house":"sand","police":"teal"}.get(b.style,"cream")
+		var walls:=building.find_child(wall_name,true,false) as MeshInstance3D
+		if walls:
+			walls.material_override=police_material if b.style=="police" else facade_material
 		if b.style=="shop":
 			jewelry.add_shop(self,building,b.id)
 	# Shared authoritative wall rectangles also stop camera clipping on the client.
