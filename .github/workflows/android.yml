@@ -28,6 +28,10 @@ jobs:
           export/android/java_sdk_path = "$JAVA_HOME"
           export/android/debug_keystore = "$HOME/.android/debug.keystore"
           SETTINGS
+          sed -i '/^\[rendering\]$/a textures/vram_compression/import_etc2_astc=true' client/project.godot
+          sdk_templates="$HOME/.local/share/godot/export_templates/4.6.3.stable"
+          test -s "$sdk_templates/android_debug.apk"
+          sed -i "s|custom_template/debug=\"\"|custom_template/debug=\"$sdk_templates/android_debug.apk\"|;s|custom_template/release=\"\"|custom_template/release=\"$sdk_templates/android_release.apk\"|" client/export_presets.cfg
           godot --headless --path client --editor --import
           godot --headless --path client --export-debug Android ../artifacts/District-Run.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify artifacts/District-Run.apk
