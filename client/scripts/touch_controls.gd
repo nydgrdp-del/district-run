@@ -1,6 +1,10 @@
 extends Control
 
 signal look_changed(delta: Vector2)
+signal loot_pressed
+var loot_caption := ""
+var bag_caption := ""
+const LOOT_RECT := Rect2(920,565,315,70)
 signal vehicle_pressed
 var vehicle_caption := ""
 const CAR_RECT := Rect2(995,480,235,70)
@@ -22,6 +26,10 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var pos: Vector2 = event.position / scale_factor
 		if event.pressed and not event.canceled:
+			if not loot_caption.is_empty() and LOOT_RECT.has_point(pos):
+				loot_pressed.emit()
+				get_viewport().set_input_as_handled()
+				return
 			if not vehicle_caption.is_empty() and CAR_RECT.has_point(pos):
 				vehicle_pressed.emit()
 				get_viewport().set_input_as_handled()
@@ -51,6 +59,12 @@ func _input(event: InputEvent) -> void:
 func _draw() -> void:
 	if not enabled:
 		return
+	if not bag_caption.is_empty():
+		draw_rect(Rect2(690,95,544,38),Color(.04,.12,.14,.9))
+		draw_string(ThemeDB.fallback_font,Vector2(700,122),bag_caption,HORIZONTAL_ALIGNMENT_LEFT,-1,22)
+	if not loot_caption.is_empty():
+		draw_rect(LOOT_RECT,Color(.22,.15,.05,.96))
+		draw_string(ThemeDB.fallback_font,LOOT_RECT.position+Vector2(0,44),loot_caption,HORIZONTAL_ALIGNMENT_CENTER,LOOT_RECT.size.x,24,Color.WHITE)
 	if not vehicle_caption.is_empty():
 		draw_rect(CAR_RECT,Color(.04,.16,.18,.94))
 		draw_rect(CAR_RECT,Color(.55,.92,.82),false,3)

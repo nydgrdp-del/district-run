@@ -216,6 +216,7 @@ func _make_ui() -> void:
 	objective.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	touch=TouchControls.new()
 	root.add_child(touch)
+	touch.loot_pressed.connect(_jewel_action)
 	touch.vehicle_pressed.connect(_vehicle)
 	touch.look_changed.connect(func(delta: Vector2): yaw-=delta.x*.005; pitch=clampf(pitch+delta.y*.003,-.08,.9))
 	sprint_button=_button(hud,"SPRINT",Vector2(74,664),Vector2(173,40),func(): pass)
@@ -247,6 +248,8 @@ func _make_ui() -> void:
 
 func _start_practice() -> void:
 	practice=true
+	world.jewelry.solo=true
+	world.jewelry.refresh()
 	carrying=false
 	deliveries=0
 	net.player_id="local"
@@ -269,8 +272,18 @@ func _start_practice() -> void:
 	_practice_hud()
 	_notice("Move with the left stick. Swipe right side to look.")
 
+func _jewel_action() -> void:
+	if practice and you.vehicle=="":
+		world.jewelry.interact(world.jewelry.context(Vector3(you.x,0,you.z),world))
+		_practice_hud()
+
 func _practice_hud() -> void:
 	touch.vehicle_caption="EXIT CAR" if you.vehicle!="" else ("ENTER CAR" if _near_car()!="" else "")
+	var action: Dictionary=world.jewelry.context(Vector3(you.x,0,you.z),world) if you.vehicle=="" else {}
+	touch.loot_caption=action.get("text","")
+	touch.bag_caption="JEWELRY %d/4    $%d" % [world.jewelry.bag.size(),world.jewelry.cash]
+	if you.vehicle!="":
+		touch.bag_caption+="    TRUNK %d/12" % world.jewelry.trunks.get(you.vehicle,[]).size()
 	touch.queue_redraw()
 	var station: Dictionary=world.data.stations[1 if carrying else 0]
 	var offset:=Vector2(station.x-you.x,station.z-you.z)
@@ -315,7 +328,12 @@ func _solo_blocked(pos: Vector2,radius: float,ignore_car: String="") -> bool:
 	for dx in range(-1,2):
 		for dz in range(-1,2):
 			for building in world.buildings_by_chunk.get(key+Vector2i(dx,dz),[]):
+				if building.style=="shop" and ignore_car=="":
+					continue
 				if absf(pos.x-building.x)<6.18+radius and absf(pos.y-building.z)<5.18+radius:
+					return true
+			for wall in world.walls_by_chunk.get(key+Vector2i(dx,dz),[]):
+				if absf(pos.x-wall[0])<wall[2]*.5+radius and absf(pos.y-wall[1])<wall[3]*.5+radius:
 					return true
 	for id in world.vehicles:
 		if id==ignore_car:
@@ -370,6 +388,10 @@ func _connected() -> void:
 func _disconnected() -> void:
 	playing=false
 	practice=false
+	world.jewelry.solo=false
+	world.jewelry.refresh()
+	touch.loot_caption=""
+	touch.bag_caption=""
 	touch.vehicle_caption=""
 	hud.hide()
 	menu.show()
@@ -570,6 +592,10 @@ func _physics_process(delta: float) -> void:
 		if not str(you.vehicle).is_empty():
 			target=Vector3(you.x,1.5,you.z)
 		var offset := Vector3(.6,2.4+pitch*4,6.2).rotated(Vector3.UP,yaw)
+		var cell:=Vector2i(roundi(target.x/60),roundi(target.z/60))
+		for shop in world.buildings_by_chunk.get(cell,[]):
+			if shop.style=="shop" and absf(target.x-shop.x)<5.9 and absf(target.z-shop.z)<5:
+				offset=Vector3(.2,.65,1.8).rotated(Vector3.UP,yaw)
 		var desired := target+offset
 		var query := PhysicsRayQueryParameters3D.create(target,desired)
 		var hit := get_world_3d().direct_space_state.intersect_ray(query)

@@ -1,5 +1,6 @@
 extends Node3D
 
+var jewelry := preload("res://scripts/jewelry.gd").new()
 var data: Dictionary
 var chunks := {}
 var buildings_by_chunk := {}
@@ -16,6 +17,7 @@ var pavement_material := StandardMaterial3D.new()
 var line_material := StandardMaterial3D.new()
 
 func _ready() -> void:
+	jewelry.load_progress()
 	data = JSON.parse_string(FileAccess.get_file_as_string("res://data/world.json"))
 	for building in data.buildings:
 		var key := Vector2i(roundi(building.x/60.0), roundi(building.z/60.0))
@@ -120,6 +122,8 @@ func build_chunk(key: Vector2i) -> void:
 		var building: Node3D = models[b.style].instantiate()
 		building.position = Vector3(b.x,0,b.z)
 		root.add_child(building)
+		if b.style=="shop":
+			jewelry.add_shop(self,building,b.id)
 	# Shared authoritative wall rectangles also stop camera clipping on the client.
 	for wall in walls_by_chunk.get(key, []):
 		var body := StaticBody3D.new()
