@@ -14,6 +14,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 WORLD = json.loads((Path(__file__).resolve().parents[1] / 'client/data/world.json').read_text())
+WALL_GRID = {}
+for wall in WORLD['obstacles']:
+    ox, oz, width, depth = wall
+    for ix in range(math.floor((ox-width/2-2)/30), math.floor((ox+width/2+2)/30)+1):
+        for iz in range(math.floor((oz-depth/2-2)/30), math.floor((oz+depth/2+2)/30)+1):
+            WALL_GRID.setdefault((ix, iz), []).append(wall)
 TICK = .05
 MAX_PLAYERS = 32
 AOI = 100
@@ -173,7 +179,7 @@ class World:
         if abs(x) > WORLD['extent'] - radius or abs(z) > WORLD['extent'] - radius:
             return True
         return any(abs(x-ox) < w/2+radius and abs(z-oz) < d/2+radius
-                   for ox, oz, w, d in WORLD['obstacles'])
+                   for ox, oz, w, d in WALL_GRID.get((math.floor(x/30), math.floor(z/30)), ()))
 
     def line_clear(self, x, z, tx, tz):
         steps = max(1, math.ceil(math.hypot(tx-x, tz-z) / .2))

@@ -23,7 +23,7 @@ func _ready() -> void:
 	line_material.albedo_color = Color("d8cb89")
 	for mat in [road_material,sand_material,pavement_material,line_material]:
 		mat.roughness = .95
-	mesh_box(self, Vector3(0,-.11,0), Vector3(520,.2,520), sand_material)
+	mesh_box(self, Vector3(0,-.11,0), Vector3(data.extent*2+20,.2,data.extent*2+20), sand_material)
 	for s in data.stations:
 		var obj: Node3D = models.terminal.instantiate()
 		obj.position = Vector3(s.x,0,s.z)
@@ -76,7 +76,7 @@ func update_chunks(at: Vector3) -> void:
 		for z in range(center.y-1,center.y+2):
 			var key := Vector2i(x,z)
 			wanted[key] = true
-			if not chunks.has(key):
+			if absi(x) <= 8 and absi(z) <= 8 and not chunks.has(key):
 				build_chunk(key)
 	for key in chunks.keys():
 		if not wanted.has(key):
@@ -92,6 +92,9 @@ func build_chunk(key: Vector2i) -> void:
 	var cz := key.y * 60.0
 	mesh_box(root,Vector3(cx,.005,cz),Vector3(12,.02,60),road_material)
 	mesh_box(root,Vector3(cx,.006,cz+20),Vector3(60,.02,10),road_material)
+	if key.x == 0 or key.y == 0:
+		for stripe in range(-4,5):
+			mesh_box(root,Vector3(cx+stripe*1.1,.035,cz+13),Vector3(.52,.02,3),line_material)
 	for side in [-1,1]:
 		mesh_box(root,Vector3(cx+side*8,.06,cz-7.5),Vector3(4,.12,45),pavement_material)
 		for j in range(3):
