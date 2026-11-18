@@ -18,8 +18,8 @@ func _input(event: InputEvent) -> void:
 	var scale_factor := get_viewport().get_visible_rect().size / Vector2(1280,720)
 	if event is InputEventScreenTouch:
 		var pos: Vector2 = event.position / scale_factor
-		if event.pressed:
-			if pos.x < 360 and pos.y > 380 and stick_id < 0:
+		if event.pressed and not event.canceled:
+			if pos.x < 360 and pos.y > 380 and pos.y < 655 and stick_id < 0:
 				stick_id = event.index
 				origin = pos
 				finger = pos
@@ -34,7 +34,9 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventScreenDrag:
 		if event.index == stick_id:
 			finger = event.position / scale_factor
-			move = ((finger-origin)/65).limit_length()
+			var offset := ((finger-origin)/65).limit_length()
+			var strength := clampf((offset.length()-.12)/.88, 0, 1)
+			move = offset.normalized()*strength
 		elif event.index == look_id:
 			look_changed.emit(event.relative / scale_factor)
 	queue_redraw()
@@ -52,3 +54,7 @@ func reset() -> void:
 	stick_id = -1
 	look_id = -1
 	queue_redraw()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		reset()

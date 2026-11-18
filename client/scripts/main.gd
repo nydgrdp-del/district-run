@@ -27,6 +27,8 @@ var nickname: LineEdit
 var address: LineEdit
 var status: Label
 var toast: Label
+var fps_label: Label
+var fps_clock := 0.0
 var stats: Label
 var objective: Label
 var location_label: Label
@@ -45,7 +47,7 @@ var smoke := false
 var smoke_ok := false
 
 func _ready() -> void:
-	DisplayServer.window_set_title("District Run | Mobile development build 0.1")
+	DisplayServer.window_set_title("District Run | Mobile development build 0.3")
 	_setup_inputs()
 	net = Network.new()
 	add_child(net)
@@ -186,6 +188,7 @@ func _make_ui() -> void:
 	hud = Control.new()
 	hud.visible=false
 	root.add_child(hud)
+	fps_label=_label(hud,"",Vector2(968,26),Vector2(115,40),18)
 	map=MiniMap.new()
 	map.position=Vector2(24,24)
 	map.size=Vector2(188,172)
@@ -420,7 +423,7 @@ func _physics_process(delta: float) -> void:
 		var hit := get_world_3d().direct_space_state.intersect_ray(query)
 		if not hit.is_empty():
 			desired=hit.position+(target-hit.position).normalized()*.3
-		camera.position=camera.position.lerp(desired,minf(1,delta*12))
+		camera.position=camera.position.lerp(desired,1.0-exp(-12.0*delta))
 		camera.look_at(target+Vector3(-sin(yaw),0,-cos(yaw))*2)
 		world.update_chunks(actor.position)
 	step_clock+=delta
@@ -430,6 +433,11 @@ func _physics_process(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	elapsed+=delta
+	if playing:
+		fps_clock += delta
+		if fps_clock >= .5:
+			fps_label.text = "%d FPS" % Engine.get_frames_per_second()
+			fps_clock = 0.0
 	if elapsed>toast_until:
 		toast.text=""
 	if not playing:

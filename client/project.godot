@@ -1,7 +1,8 @@
 config_version=5
 
 [application]
-config/name="District Run — Development 0.1"
+config/name="District Run — Development 0.3"
+run/max_fps=60
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"

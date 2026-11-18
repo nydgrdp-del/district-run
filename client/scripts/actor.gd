@@ -47,8 +47,8 @@ func _process(delta: float) -> void:
 	if position.distance_to(target)>8:
 		position = target
 	else:
-		position = position.lerp(target,minf(1,delta*16))
-	rotation.y = lerp_angle(rotation.y,yaw,minf(1,delta*12))
+		position = position.lerp(target,1.0-exp(-16.0*delta))
+	rotation.y = lerp_angle(rotation.y,yaw,1.0-exp(-12.0*delta))
 	gait += delta * maxf(0,moving) * 2.6
 	var swing := sin(gait)*minf(moving/6,.8)
 	for key in parts:

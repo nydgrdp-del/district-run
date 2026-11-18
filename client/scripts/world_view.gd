@@ -2,6 +2,8 @@ extends Node3D
 
 var data: Dictionary
 var chunks := {}
+var buildings_by_chunk := {}
+var walls_by_chunk := {}
 var models := {}
 var vehicles := {}
 var pickups := {}
@@ -15,6 +17,16 @@ var line_material := StandardMaterial3D.new()
 
 func _ready() -> void:
 	data = JSON.parse_string(FileAccess.get_file_as_string("res://data/world.json"))
+	for building in data.buildings:
+		var key := Vector2i(roundi(building.x/60.0), roundi(building.z/60.0))
+		if not buildings_by_chunk.has(key):
+			buildings_by_chunk[key] = []
+		buildings_by_chunk[key].append(building)
+	for wall in data.obstacles:
+		var key := Vector2i(roundi(wall[0]/60.0), roundi(wall[1]/60.0))
+		if not walls_by_chunk.has(key):
+			walls_by_chunk[key] = []
+		walls_by_chunk[key].append(wall)
 	for key in ["shop","house","apartment","police","sedan","runner","palm","crate","terminal"]:
 		models[key] = load("res://assets/%s.glb" % key)
 	road_material.albedo_color = Color("343e40")
@@ -104,22 +116,20 @@ func build_chunk(key: Vector2i) -> void:
 			root.add_child(palm)
 	for j in range(10):
 		mesh_box(root,Vector3(cx,.025,cz-28+j*6),Vector3(.12,.02,2.8),line_material)
-	for b in data.buildings:
-		if roundi(float(b.x)/60) == key.x and roundi(float(b.z)/60) == key.y:
-			var building: Node3D = models[b.style].instantiate()
-			building.position = Vector3(b.x,0,b.z)
-			root.add_child(building)
+	for b in buildings_by_chunk.get(key, []):
+		var building: Node3D = models[b.style].instantiate()
+		building.position = Vector3(b.x,0,b.z)
+		root.add_child(building)
 	# Shared authoritative wall rectangles also stop camera clipping on the client.
-	for wall in data.obstacles:
-		if roundi(float(wall[0])/60) == key.x and roundi(float(wall[1])/60) == key.y:
-			var body := StaticBody3D.new()
-			body.position = Vector3(wall[0],2,wall[1])
-			var shape := CollisionShape3D.new()
-			var box := BoxShape3D.new()
-			box.size = Vector3(wall[2],4,wall[3])
-			shape.shape = box
-			body.add_child(shape)
-			root.add_child(body)
+	for wall in walls_by_chunk.get(key, []):
+		var body := StaticBody3D.new()
+		body.position = Vector3(wall[0],2,wall[1])
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(wall[2],4,wall[3])
+		shape.shape = box
+		body.add_child(shape)
+		root.add_child(body)
 
 func apply_snapshot(s: Dictionary) -> void:
 	for v in s.vehicles:
