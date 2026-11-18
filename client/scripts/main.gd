@@ -281,7 +281,7 @@ func _practice_hud() -> void:
 	touch.vehicle_caption="EXIT CAR" if you.vehicle!="" else ("ENTER CAR" if _near_car()!="" else "")
 	var action: Dictionary=world.jewelry.context(Vector3(you.x,0,you.z),world) if you.vehicle=="" else {}
 	touch.loot_caption=action.get("text","")
-	touch.bag_caption="JEWELRY %d/4    $%d" % [world.jewelry.bag.size(),world.jewelry.cash]
+	touch.bag_caption="JEWELRY 0.6  |  BAG %d/4    $%d" % [world.jewelry.bag.size(),world.jewelry.cash]
 	if you.vehicle!="":
 		touch.bag_caption+="    TRUNK %d/12" % world.jewelry.trunks.get(you.vehicle,[]).size()
 	touch.queue_redraw()
