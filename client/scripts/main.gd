@@ -14,6 +14,10 @@ var you := {}
 var latest := {}
 var yaw := 0.0
 var pitch := .23
+var practice := false
+var carrying := false
+var deliveries := 0
+var online_controls: Array[Control] = []
 var playing := false
 var input_clock := 0.0
 var step_clock := 0.0
@@ -47,7 +51,7 @@ var smoke := false
 var smoke_ok := false
 
 func _ready() -> void:
-	DisplayServer.window_set_title("District Run | Mobile development build 0.3")
+	DisplayServer.window_set_title("District Run | Mobile development build 0.4")
 	_setup_inputs()
 	net = Network.new()
 	add_child(net)
@@ -73,6 +77,8 @@ func _ready() -> void:
 			smoke = true
 	if not auto_url.is_empty():
 		net.join(auto_url,"Build tester")
+	else:
+		_start_practice()
 
 func _setup_inputs() -> void:
 	var keys := {"forward":KEY_W,"back":KEY_S,"left":KEY_A,"right":KEY_D,"sprint":KEY_SHIFT,
@@ -163,8 +169,9 @@ func _make_ui() -> void:
 	canvas.add_child(root)
 	menu = Control.new()
 	root.add_child(menu)
+	menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var pane := _panel(menu,Vector2(36,36),Vector2(460,648),Color(.025,.075,.09,.95))
-	_label(pane,"OPEN DISTRICT  /  DEVELOPMENT 0.1",Vector2(30,26),Vector2(400,30),15,Color("72cfbb"))
+	_label(pane,"OPEN DISTRICT  /  DEVELOPMENT 0.4",Vector2(30,26),Vector2(400,30),15,Color("72cfbb"))
 	_label(pane,"DISTRICT\nRUN",Vector2(26,68),Vector2(405,150),66,Color("f2e8ca"))
 	_label(pane,"Build your name. Risk your haul.",Vector2(30,223),Vector2(400,32),21,Color("c0d3c8"))
 	_label(pane,"PLAYER NAME",Vector2(30,285),Vector2(400,22),13,Color("85b6aa"))
@@ -181,13 +188,16 @@ func _make_ui() -> void:
 	address.text=net.config.get_value("connection","url","ws://127.0.0.1:8765")
 	pane.add_child(address)
 	_button(pane,"ENTER DISTRICT  →",Vector2(30,480),Vector2(400,54),func(): net.join(address.text,nickname.text),true)
-	status = _label(pane,"Run the included server to play.\nAn early build, not the finished game.",Vector2(30,550),Vector2(400,80),15,Color("b4c6bc"))
+	_button(pane,"PLAY SOLO",Vector2(30,543),Vector2(400,42),_start_practice)
+	status = _label(pane,"Run the included server to play.\nAn early build, not the finished game.",Vector2(30,585),Vector2(400,58),15,Color("b4c6bc"))
 	status.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	_label(menu,"LOOT  •  DRIVE  •  BUILD",Vector2(775,610),Vector2(450,40),24,Color("f5ebce"))
 	_label(menu,"Original assets and world • Mobile-first controls",Vector2(775,653),Vector2(470,24),15,Color("ccdbce"))
 	hud = Control.new()
 	hud.visible=false
 	root.add_child(hud)
+	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hud.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	fps_label=_label(hud,"",Vector2(968,26),Vector2(115,40),18)
 	map=MiniMap.new()
 	map.position=Vector2(24,24)
@@ -215,6 +225,10 @@ func _make_ui() -> void:
 	_button(hud,"CAR",Vector2(1006,508),Vector2(106,46),_vehicle)
 	ammo_label=_label(hud,"",Vector2(1090,477),Vector2(180,30),19,Color("f5dfa0"))
 	_label(hud,"+",Vector2(628,338),Vector2(30,38),28,Color(.95,.95,.85,.8))
+	for child in hud.get_children():
+		if child is Button and child.text in ["BAG","MASK","RELOAD","FIRE","CAR"]:
+			online_controls.append(child)
+	online_controls.append(ammo_label)
 	toast=_label(root,"",Vector2(360,644),Vector2(620,48),19,Color("ffdd97"))
 	toast.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
 	toast.add_theme_color_override("font_shadow_color",Color.BLACK)
@@ -229,8 +243,66 @@ func _make_ui() -> void:
 	inventory.add_child(bag_grid)
 	_label(inventory,"Stolen goods are lost on death while wanted.\nSell at the teal terminal near the market.",Vector2(28,370),Vector2(500,60),17,Color("b9ccc3"))
 
+func _start_practice() -> void:
+	practice=true
+	carrying=false
+	deliveries=0
+	net.player_id="local"
+	_connected()
+	for control in online_controls:
+		control.hide()
+	var spawn: Array=world.data.spawn
+	you={"id":"local","name":"Runner","x":float(spawn[0]),"z":float(spawn[1]),"yaw":0.0,
+		"speed":0.0,"vehicle":"","role":"runner","masked":false}
+	var actor := Actor.new()
+	add_child(actor)
+	actor.setup(world.models.runner,"Runner")
+	actor.position=Vector3(you.x,0,you.z)
+	actor.state(you)
+	actor.name_label.hide()
+	actors.local=actor
+	yaw=0
+	camera.position=actor.position+Vector3(.6,4,6.2)
+	location_label.text="SUNSET  •  SOLO"
+	_practice_hud()
+	_notice("Move with the left stick. Swipe right side to look.")
+
+func _practice_hud() -> void:
+	var station: Dictionary=world.data.stations[1 if carrying else 0]
+	var offset:=Vector2(station.x-you.x,station.z-you.z)
+	objective.text=("Deliver to " if carrying else "Collect parcel at ")+str(station.title)+"  %dm" % roundi(offset.length())
+	interact_button.text="DELIVER" if carrying else "COLLECT"
+	interact_button.disabled=offset.length()>3
+	stats.text="DELIVERIES  %d      EARNED  $%d" % [deliveries,deliveries*100]
+	map.player=Vector2(you.x,you.z)
+	map.yaw=yaw
+	map.queue_redraw()
+
+func _practice_move(dir: Vector2, sprint: bool, delta: float) -> void:
+	var actor: Node3D=actors.local
+	var step:=dir*(6.2 if sprint else 3.8)*delta
+	for axis in [Vector2(step.x,0),Vector2(0,step.y)]:
+		var pos: Vector2=Vector2(you.x,you.z)+axis
+		if maxf(absf(pos.x),absf(pos.y))>world.data.extent-0.4:
+			continue
+		var key:=Vector2i(roundi(pos.x/60),roundi(pos.y/60))
+		var blocked:=false
+		for dx in range(-1,2):
+			for dz in range(-1,2):
+				for wall in world.walls_by_chunk.get(key+Vector2i(dx,dz),[]):
+					if absf(pos.x-wall[0])<wall[2]*.5+.35 and absf(pos.y-wall[1])<wall[3]*.5+.35:
+						blocked=true
+		if not blocked:
+			you.x=pos.x
+			you.z=pos.y
+	you.speed=step.length()/delta
+	you.yaw=yaw
+	actor.state(you)
+
 func _connected() -> void:
 	playing=true
+	for control in online_controls:
+		control.show()
 	menu.hide()
 	hud.show()
 	touch.enabled=true
@@ -239,6 +311,7 @@ func _connected() -> void:
 
 func _disconnected() -> void:
 	playing=false
+	practice=false
 	hud.hide()
 	menu.show()
 	inventory.hide()
@@ -359,6 +432,13 @@ func _find_nearest() -> void:
 	interact_button.disabled=nearest.is_empty()
 
 func _interact() -> void:
+	if practice:
+		if not interact_button.disabled:
+			if carrying:
+				deliveries+=1
+			carrying=not carrying
+			_practice_hud()
+		return
 	if not nearest.is_empty():
 		net.act(nearest.kind,nearest.id)
 
@@ -382,6 +462,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode==Input.MOUSE_MODE_CAPTURED:
 		yaw-=event.relative.x*.004
 		pitch=clampf(pitch+event.relative.y*.003,-.08,.9)
+	if practice:
+		if event.is_action_pressed("interact"):
+			_interact()
+		return
 	if event.is_action_pressed("bag"):
 		_toggle_bag()
 	if inventory.visible:
@@ -401,17 +485,21 @@ func _physics_process(delta: float) -> void:
 	if not playing or you.is_empty():
 		return
 	input_clock+=delta
+	var dir: Vector2 = (Input.get_vector("left","right","forward","back") + touch.move).limit_length()
+	if inventory.visible:
+		dir=Vector2.ZERO
+	if str(you.vehicle).is_empty():
+		dir=dir.rotated(-yaw)
+	var sprint:=Input.is_action_pressed("sprint") or sprint_button.button_pressed
+	if practice:
+		_practice_move(dir,sprint,delta)
 	if input_clock>=.05:
 		input_clock=0
-		var dir: Vector2 = Input.get_vector("left","right","forward","back") + touch.move
-		if inventory.visible:
-			dir=Vector2.ZERO
-		dir=dir.limit_length()
-		if str(you.vehicle).is_empty():
-			var v := Vector3(dir.x,0,dir.y).rotated(Vector3.UP,yaw)
-			dir=Vector2(v.x,v.z)
-		net.movement(dir,yaw,Input.is_action_pressed("sprint") or sprint_button.button_pressed)
-	_find_nearest()
+		if practice:
+			_practice_hud()
+		else:
+			net.movement(dir,yaw,sprint)
+			_find_nearest()
 	var actor: Node3D=actors.get(net.player_id)
 	if actor:
 		var target := actor.position+Vector3(0,1.5,0)
